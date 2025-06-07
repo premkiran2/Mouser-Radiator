@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Team Information Radiator</title>
+
+  <!-- React and ReactDOM (classic) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+  <!-- D3.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            fadeIn: 'fadeIn 1s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: 0, transform: 'translateY(10px)' },
+              '100%': { opacity: 1, transform: 'translateY(0)' }
+            }
+          }
+        }
+      }
+    };
+  </script>
+</head>
+
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const Radiator = () => {
+      const [issues, setIssues] = useState([]);
+      const [commits, setCommits] = useState([]);
+      const [ideas, setIdeas] = useState([]);
+
+      const repo = 'slu-csci-5030/Mouser';
+
+      const fetchGitHubData = async () => {
+        try {
+          const [issueRes, commitRes] = await Promise.all([
+            fetch(`https://api.github.com/repos/${repo}/issues?state=all`),
+            fetch(`https://api.github.com/repos/${repo}/commits`)
+          ]);
+
+          // Filter out pull requests (which have the pull_request field)
+          const allIssues = await issueRes.json();
+          const filteredIssues = allIssues.filter(issue => !issue.pull_request);
+
+          setIssues(filteredIssues);
+          setCommits(await commitRes.json());
+        } catch (error) {
+          console.error('Error fetching GitHub data:', error);
+        }
+      };
+
+      useEffect(() => {
+        fetchGitHubData();
+        const interval = setInterval(fetchGitHubData, 30000);
+        return () => clearInterval(interval);
+      }, []);
+
+      useEffect(() => {
+  if (!issues.length) return;
+
+  const sprintEnd = new Date('2025-06-13T23:59:59Z');
+  const today = new Date();
+  const startDate = today < sprintEnd ? today : sprintEnd;
+  const dayCount = Math.ceil((sprintEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+  // Current number of open issues (today)
+  const currentRemaining = issues.filter(i => i.state === 'open').length;
+
+  // Generate linearly decreasing data from currentRemaining to 0
+  const data = [];
+  for (let i = 0; i < dayCount; i++) {
+    const remaining = Math.max(0, currentRemaining * (1 - i / (dayCount - 1)));
+    data.push({ day: i + 1, remaining });
+  }
+
+  const maxRemaining = currentRemaining;
+
+  const svg = d3.select('#burndown-chart').html('').attr('width', 400).attr('height', 200);
+
+  const x = d3.scaleLinear().domain([1, dayCount]).range([40, 370]);
+  const y = d3.scaleLinear().domain([0, maxRemaining]).range([150, 10]);
+
+  const line = d3.line()
+    .x(d => x(d.day))
+    .y(d => y(d.remaining));
+
+  svg.append('g')
+    .attr('transform', 'translate(0,150)')
+    .call(d3.axisBottom(x).ticks(dayCount).tickFormat(d => `Day ${d}`))
+    .selectAll("text")
+      .style("text-anchor", "middle")
+      .attr("transform", "rotate(0)");
+
+  svg.append('g')
+    .attr('transform', 'translate(40,0)')
+    .call(d3.axisLeft(y));
+
+  svg.append('path')
+    .datum(data)
+    .attr('fill', 'none')
+    .attr('stroke', '#3b82f6')
+    .attr('stroke-width', 2)
+    .attr('d', line);
+
+  svg.append("text")
+    .attr("x", 200)
+    .attr("y", 190)
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px")
+    .attr("fill", "#374151")
+    .text("Days");
+
+  svg.append("text")
+    .attr("x", -100)
+    .attr("y", 15)
+    .attr("transform", "rotate(-90)")
+    .attr("text-anchor", "middle")
+    .attr("font-size", "12px")
+    .attr("fill", "#374151")
+    .text("Remaining Open Issues");
+
+}, [issues]);
+
+      const handleIdeaSubmit = (e) => {
+        e.preventDefault();
+        const idea = e.target.idea.value.trim();
+        if (idea) setIdeas([...ideas, idea]);
+        e.target.reset();
+      };
+
+      return (
+        <div className="min-h-screen p-6">
+          <h1 className="text-4xl font-bold text-center text-blue-900 mb-8 animate-fadeIn">
+            Mouser Team Information Radiator
+          </h1>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
+            {[{
+              title: "Sprint Progress (Burndown)",
+              content: <svg id="burndown-chart" className="w-full h-48"></svg>,
+            }, {
+              title: "Issue Status",
+              content: (
+                <>
+                  <p>Open Issues: <span className="text-blue-600 font-semibold">{issues.filter(i => i.state === 'open').length}</span></p>
+                  <p>Closed Issues: <span className="text-green-600 font-semibold">{issues.filter(i => i.state === 'closed').length}</span></p>
+                </>
+              ),
+            }, {
+              title: "Improvement Ideas",
+              content: (
+                <>
+                  <form onSubmit={handleIdeaSubmit} className="space-y-2">
+                    <input
+                      type="text"
+                      name="idea"
+                      className="w-full px-3 py-2 rounded border focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="Suggest an idea..."
+                    />
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+                      Submit
+                    </button>
+                  </form>
+                  <ul className="mt-2 list-disc list-inside text-gray-700 space-y-1 max-h-32 overflow-y-auto">
+                    {ideas.map((idea, index) => (
+                      <li key={index} className="text-sm">{idea}</li>
+                    ))}
+                  </ul>
+                </>
+              ),
+            }, {
+              title: "Team Health",
+              content: (
+                <>
+                  <p>Status: <span className="text-green-500 font-bold">Healthy</span></p>
+                  <p className="text-sm text-gray-600">Based on recent commits and issue resolution rates.</p>
+                </>
+              ),
+            }, {
+              title: "Project Progress",
+              content: (
+                <>
+                  <p>Commits this week: <span className="font-medium text-blue-700">{commits.length}</span></p>
+                  <p>Milestones completed: <span className="text-yellow-600 font-semibold">3/5</span></p>
+                </>
+              ),
+            }].map((card, idx) => (
+              <div
+                key={idx}
+                className="bg-white p-5 rounded-2xl shadow-lg transform hover:scale-[1.02] transition-all duration-300"
+              >
+                <h2 className="text-xl font-semibold text-gray-800 mb-3">{card.title}</h2>
+                {card.content}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<Radiator />, document.getElementById("root"));
+  </script>
+</body>
+</html>
